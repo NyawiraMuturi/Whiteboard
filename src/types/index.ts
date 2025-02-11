@@ -11,12 +11,13 @@ export interface CtxOptions {
     lineColor: RgbaColor;
     fillColor: RgbaColor;
     shape: Shape;
-    mode: CtxMode;
+    mode: DrawingMode;
     size: number;
 }
 
-export type Shape = 'line' | 'circle' | 'rect' | 'image' | 'triangle' | 'arrow';
+export type Shape = 'line' | 'circle' | 'rect' | 'image' | 'triangle' | 'arrow' | 'freehand';
 export type CtxMode = 'eraser' | 'draw' | 'select';
+export type DrawingMode = "shape" | "freehand" | "erase"
 
 export interface DrawingState {
     isDrawing: boolean;
@@ -24,22 +25,9 @@ export interface DrawingState {
     currentPoint: Point | null;
 }
 
-export type Move = {
-    circle: {
-        cX: number;
-        cY: number;
-        radiusX: number;
-        radiusY: number;
-    };
-    rect: {
-        width: number;
-        height: number;
-    };
-    img: {
-        base64: string;
-    };
-    path: [number, number][];
-    options: CtxOptions;
-    timestamp: number;
-    id: string;
+export interface Move {
+    id: string
+    type: Shape | "erase"
+    points: Point[]
+    options: CtxOptions
 }

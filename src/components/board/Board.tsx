@@ -1,36 +1,27 @@
 "use client"
-import React, { useRef, useEffect, useState } from "react"
-import { useDrawing } from "@/hooks/useDrawing"
+import type React from "react"
+import { useRef, useEffect, useState } from "react"
 import type { Point, Move } from "@/types"
-import { RgbaColor } from "react-colorful"
 import { useShape } from "@/lib/context/ShapeContext"
 
 const Board: React.FC = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null)
-    const { selectedShape } = useShape()
-    const { isDrawing, startPoint, endPoint, options, moves, startDrawing, draw, endDrawing, setShape } = useDrawing()
+    const { selectedShape, drawingMode, moves, addMove } = useShape()
+    const [isDrawing, setIsDrawing] = useState(false)
+    const [currentPath, setCurrentPath] = useState<Point[]>([])
     const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
-
-    useEffect(() => {
-        setShape(selectedShape)
-    }, [selectedShape, setShape])
 
     useEffect(() => {
         const handleResize = () => {
             setCanvasSize({
-                width: window.innerWidth,
+                width: window.innerWidth - 64, // Subtracting SideNav width
                 height: window.innerHeight,
             })
         }
 
-        // Set initial size
         handleResize()
-
-        // Add event listener
-        window.addEventListener('resize', handleResize)
-
-        // Remove event listener on cleanup
-        return () => window.removeEventListener('resize', handleResize)
+        window.addEventListener("resize", handleResize)
+        return () => window.removeEventListener("resize", handleResize)
     }, [])
 
     useEffect(() => {
@@ -40,140 +31,149 @@ const Board: React.FC = () => {
         const ctx = canvas.getContext("2d")
         if (!ctx) return
 
-        // Clear the canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height)
+        drawMoves(ctx, moves)
+    }, [moves]) // Removed canvasSize from dependencies
 
-        // Draw all previous moves
-        moves.forEach((move) => {
-            drawShape(ctx, move)
+    const drawMoves = (ctx: CanvasRenderingContext2D, movesToDraw: Move[]) => {
+        movesToDraw.forEach((move) => {
+            ctx.beginPath()
+            ctx.lineWidth = move.options.lineWidth
+            ctx.strokeStyle = rgbaToString(move.options.lineColor)
+            ctx.fillStyle = rgbaToString(move.options.fillColor)
+
+            if (move.type === "erase") {
+                ctx.globalCompositeOperation = "destination-out"
+            } else {
+                ctx.globalCompositeOperation = "source-over"
+            }
+
+            switch (move.type) {
+                case "line":
+                case "arrow":
+                case "freehand":
+                    ctx.moveTo(move.points[0].x, move.points[0].y)
+                    move.points.forEach((point) => ctx.lineTo(point.x, point.y))
+                    ctx.stroke()
+                    if (move.type === "arrow") drawArrowhead(ctx, move.points)
+                    break
+                case "circle":
+                    const [center, edge] = move.points
+                    const radius = Math.hypot(center.x - edge.x, center.y - edge.y)
+                    ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI)
+                    ctx.fill()
+                    ctx.stroke()
+                    break
+                case "rect":
+                    const [start, end] = move.points
+                    ctx.rect(start.x, start.y, end.x - start.x, end.y - start.y)
+                    ctx.fill()
+                    ctx.stroke()
+                    break
+                case "triangle":
+                    ctx.moveTo(move.points[0].x, move.points[0].y)
+                    ctx.lineTo(move.points[1].x, move.points[1].y)
+                    ctx.lineTo(move.points[2].x, move.points[2].y)
+                    ctx.closePath()
+                    ctx.fill()
+                    ctx.stroke()
+                    break
+            }
         })
-
-        // Draw the current shape if drawing
-        if (isDrawing && startPoint && endPoint) {
-            drawCurrentShape(ctx)
-        }
-    }, [isDrawing, startPoint, endPoint, moves])
-
-    const drawShape = (ctx: CanvasRenderingContext2D, move: Move) => {
-        const { options, circle, rect, path } = move
-        ctx.beginPath()
-        ctx.lineWidth = options.lineWidth
-        ctx.strokeStyle = rgbaToString(options.lineColor)
-        ctx.fillStyle = rgbaToString(options.fillColor)
-
-        switch (options.shape) {
-            case "circle":
-                ctx.ellipse(circle.cX, circle.cY, circle.radiusX, circle.radiusY, 0, 0, 2 * Math.PI)
-                break
-            case "rect":
-                ctx.rect(path[0][0], path[0][1], rect.width, rect.height)
-                break
-            case "triangle":
-                ctx.moveTo(path[0][0], path[0][1])
-                ctx.lineTo(path[1][0], path[1][1])
-                ctx.lineTo(path[0][0] - (path[1][0] - path[0][0]), path[1][1])
-                ctx.closePath()
-                break
-            case "line":
-                ctx.moveTo(path[0][0], path[0][1])
-                ctx.lineTo(path[1][0], path[1][1])
-                break
-            case "arrow":
-                drawArrow(ctx, path[0][0], path[0][1], path[1][0], path[1][1])
-                break
-        }
-
-        ctx.stroke()
-        if (options.shape !== "line" && options.shape !== "arrow") {
-            ctx.fill()
-        }
     }
 
-    const drawCurrentShape = (ctx: CanvasRenderingContext2D) => {
-        if (!startPoint || !endPoint) return
-
-        ctx.beginPath()
-        ctx.lineWidth = options.lineWidth
-        ctx.strokeStyle = rgbaToString(options.lineColor)
-        ctx.fillStyle = rgbaToString(options.fillColor)
-
-        switch (options.shape) {
-            case "circle":
-                const radiusX = Math.abs(endPoint.x - startPoint.x) / 2
-                const radiusY = Math.abs(endPoint.y - startPoint.y) / 2
-                const centerX = (startPoint.x + endPoint.x) / 2
-                const centerY = (startPoint.y + endPoint.y) / 2
-                ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI)
-                break
-            case "rect":
-                ctx.rect(startPoint.x, startPoint.y, endPoint.x - startPoint.x, endPoint.y - startPoint.y)
-                break
-            case "triangle":
-                ctx.moveTo(startPoint.x, startPoint.y)
-                ctx.lineTo(endPoint.x, endPoint.y)
-                ctx.lineTo(startPoint.x - (endPoint.x - startPoint.x), endPoint.y)
-                ctx.closePath()
-                break
-            case "line":
-                ctx.moveTo(startPoint.x, startPoint.y)
-                ctx.lineTo(endPoint.x, endPoint.y)
-                break
-            case "arrow":
-                drawArrow(ctx, startPoint.x, startPoint.y, endPoint.x, endPoint.y)
-                break
-        }
-
+    const drawArrowhead = (ctx: CanvasRenderingContext2D, points: Point[]) => {
+        const end = points[points.length - 1]
+        const pre = points[points.length - 2]
+        const angle = Math.atan2(end.y - pre.y, end.x - pre.x)
+        const headlen = 10
+        ctx.moveTo(end.x - headlen * Math.cos(angle - Math.PI / 6), end.y - headlen * Math.sin(angle - Math.PI / 6))
+        ctx.lineTo(end.x, end.y)
+        ctx.lineTo(end.x - headlen * Math.cos(angle + Math.PI / 6), end.y - headlen * Math.sin(angle + Math.PI / 6))
         ctx.stroke()
-        if (options.shape !== "line" && options.shape !== "arrow") {
-            ctx.fill()
-        }
-    }
-
-    const drawArrow = (ctx: CanvasRenderingContext2D, fromX: number, fromY: number, toX: number, toY: number) => {
-        const headLength = 10 // length of head in pixels
-        const dx = toX - fromX
-        const dy = toY - fromY
-        const angle = Math.atan2(dy, dx)
-
-        // Draw the main line
-        ctx.moveTo(fromX, fromY)
-        ctx.lineTo(toX, toY)
-
-        // Draw the arrow head
-        ctx.lineTo(toX - headLength * Math.cos(angle - Math.PI / 6), toY - headLength * Math.sin(angle - Math.PI / 6))
-        ctx.moveTo(toX, toY)
-        ctx.lineTo(toX - headLength * Math.cos(angle + Math.PI / 6), toY - headLength * Math.sin(angle + Math.PI / 6))
     }
 
     const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        const canvas = canvasRef.current
-        if (!canvas) return
-
-        const rect = canvas.getBoundingClientRect()
-        const point: Point = {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-        }
-        startDrawing(point)
+        setIsDrawing(true)
+        const point = getCanvasPoint(e)
+        setCurrentPath([point])
     }
 
     const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        if (!isDrawing) return
+        const newPoint = getCanvasPoint(e)
+        setCurrentPath((prev) => [...prev, newPoint])
+
         const canvas = canvasRef.current
         if (!canvas) return
+        const ctx = canvas.getContext("2d")
+        if (!ctx) return
 
-        const rect = canvas.getBoundingClientRect()
-        const point: Point = {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-        }
-        draw(point)
+        ctx.beginPath()
+        ctx.moveTo(currentPath[currentPath.length - 1].x, currentPath[currentPath.length - 1].y)
+        ctx.lineTo(newPoint.x, newPoint.y)
+        ctx.stroke()
     }
 
     const handleMouseUp = () => {
-        endDrawing()
+        setIsDrawing(false)
+        if (currentPath.length < 2) return
+
+        let newMove: Move
+        if (drawingMode === "shape") {
+            newMove = {
+                id: Date.now().toString(),
+                type: selectedShape,
+                points:
+                    selectedShape === "triangle"
+                        ? [
+                            currentPath[0],
+                            currentPath[currentPath.length - 1],
+                            {
+                                x: currentPath[0].x - (currentPath[currentPath.length - 1].x - currentPath[0].x),
+                                y: currentPath[currentPath.length - 1].y,
+                            },
+                        ]
+                        : [currentPath[0], currentPath[currentPath.length - 1]],
+                options: {
+                    lineWidth: 2,
+                    lineColor: { r: 0, g: 0, b: 0, a: 1 },
+                    fillColor: { r: 255, g: 255, b: 255, a: 0.5 },
+                    shape: selectedShape,
+                    mode: drawingMode,
+                    size: 5,
+                },
+            }
+        } else {
+            newMove = {
+                id: Date.now().toString(),
+                type: drawingMode === "erase" ? "erase" : "freehand",
+                points: currentPath,
+                options: {
+                    lineWidth: drawingMode === "erase" ? 20 : 2,
+                    lineColor: drawingMode === "erase" ? { r: 255, g: 255, b: 255, a: 1 } : { r: 0, g: 0, b: 0, a: 1 },
+                    fillColor: { r: 0, g: 0, b: 0, a: 1 },
+                    shape: "freehand",
+                    mode: drawingMode,
+                    size: 5,
+                },
+            }
+        }
+        addMove(newMove)
+        setCurrentPath([])
     }
 
-    const rgbaToString = (color: RgbaColor): string => {
+    const getCanvasPoint = (e: React.MouseEvent<HTMLCanvasElement>): Point => {
+        const canvas = canvasRef.current
+        if (!canvas) return { x: 0, y: 0 }
+        const rect = canvas.getBoundingClientRect()
+        return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+        }
+    }
+
+    const rgbaToString = (color: { r: number; g: number; b: number; a: number }): string => {
         return `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`
     }
 
@@ -182,6 +182,7 @@ const Board: React.FC = () => {
             ref={canvasRef}
             width={canvasSize.width}
             height={canvasSize.height}
+            className="border border-gray-300"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -191,3 +192,4 @@ const Board: React.FC = () => {
 }
 
 export default Board
+

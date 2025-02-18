@@ -10,6 +10,7 @@ type ShapeContextType = {
     drawingMode: DrawingMode
     setDrawingMode: (mode: DrawingMode) => void
     moves: Move[]
+    setMoves: React.Dispatch<React.SetStateAction<Move[]>>
     addMove: (move: Move) => void
     undo: () => void
     redo: () => void
@@ -46,7 +47,17 @@ export const ShapeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     return (
         <ShapeContext.Provider
-            value={{ selectedShape, setSelectedShape, drawingMode, setDrawingMode, moves, addMove, undo, redo }}
+            value={{
+                selectedShape,
+                setSelectedShape,
+                drawingMode,
+                setDrawingMode,
+                moves,
+                setMoves,
+                addMove,
+                undo,
+                redo
+            }}
         >
             {children}
         </ShapeContext.Provider>
